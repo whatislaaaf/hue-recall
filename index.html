@@ -1,0 +1,1069 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hue Recall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+/* Layout: one game card centred on a dim table; every screen is a state of that card, and the colours themselves are the only accent. */
+:root {
+  --table: #16151a;
+  --card: #0c0b0f;
+  --fg: #f3f1f6;
+  --muted: #9b97a5;
+  --line: #2b2932;
+  --chip: #1d1b22;
+  --win: #ffd36e;
+  --display: "Bricolage Grotesque", "Arial Black", "Segoe UI", system-ui, sans-serif;
+  --body: "Figtree", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ring: conic-gradient(from 0deg, #ff4d4d, #ffb84d, #f5f05a, #5ae07a, #4dd6ff, #5a6bff, #c45aff, #ff4d9e, #ff4d4d);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--table);
+  color: var(--fg);
+  font-family: var(--body);
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: default; opacity: .55; }
+:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; }
+
+.card {
+  position: relative;
+  width: min(100%, 440px);
+  height: min(100%, 700px);
+  border-radius: 24px;
+  overflow: hidden;
+  background: var(--card);
+  box-shadow: 0 30px 80px -30px rgba(0,0,0,.8), 0 0 0 1px var(--line);
+}
+.screen { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.scroll { overflow-y: auto; padding: 28px 26px 26px; gap: 18px; }
+
+/* ---------- shared bits ---------- */
+.eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.pill {
+  border: 0; border-radius: 999px; padding: 14px 22px;
+  font-weight: 700; font-size: 15px;
+  background: var(--fg); color: var(--card);
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  transition: transform .12s ease;
+}
+.pill:active:not(:disabled) { transform: scale(.96); }
+.pill.ghost { background: var(--chip); color: var(--fg); box-shadow: inset 0 0 0 1px var(--line); }
+.pill.small { padding: 10px 16px; font-size: 14px; }
+.grow { flex: 1; min-height: 0; }
+.tnum { font-variant-numeric: tabular-nums; }
+.hint { color: var(--muted); font-size: 13px; line-height: 1.45; margin: 0; }
+.err { color: #ff9a9a; }
+.title2 { font-family: var(--display); font-weight: 800; font-size: 40px; line-height: .95; letter-spacing: -.035em; margin: 0; text-wrap: balance; }
+.foot { margin-top: auto; display: flex; gap: 10px; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+.field {
+  width: 100%; min-width: 0; border: 0; border-radius: 14px; padding: 14px 16px;
+  background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); font-weight: 600; font-size: 16px;
+}
+.field:focus { outline: none; box-shadow: inset 0 0 0 1px var(--fg); }
+.codebox { display: flex; gap: 8px; }
+.codebox .field { flex: 1; text-transform: uppercase; letter-spacing: .2em; border-radius: 999px; }
+.codebox .field::placeholder { letter-spacing: .02em; text-transform: none; color: var(--muted); font-weight: 500; }
+.or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.seg { display: inline-flex; background: var(--chip); border-radius: 999px; padding: 3px; box-shadow: inset 0 0 0 1px var(--line); }
+.seg button { border: 0; background: transparent; border-radius: 999px; padding: 7px 13px; font-weight: 600; font-size: 13px; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--fg); color: var(--card); }
+.settings { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+/* ---------- home ---------- */
+#home { padding: 30px 26px 26px; gap: 18px; }
+.brand { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.brand h1 {
+  margin: 0; font-family: var(--display); font-weight: 800;
+  font-size: clamp(54px, 17vw, 76px); line-height: .86; letter-spacing: -.045em;
+}
+.brand h1 span { display: block; }
+.dial { width: 64px; height: 64px; border-radius: 50%; background: var(--ring); flex: none; position: relative; animation: spin 14s linear infinite; }
+.dial::after { content: ""; position: absolute; inset: 9px; border-radius: 50%; background: var(--card); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.blurb { color: #c9c5d1; font-size: 17px; line-height: 1.45; margin: 0; max-width: 34ch; text-wrap: pretty; }
+.blurb b { color: var(--fg); font-weight: 600; }
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mode {
+  text-align: left; border: 0; border-radius: 18px; padding: 16px; min-height: 108px;
+  background: var(--chip); box-shadow: inset 0 0 0 1px var(--line);
+  display: flex; flex-direction: column; justify-content: space-between; gap: 10px;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.mode:hover { box-shadow: inset 0 0 0 1px #4a4754; }
+.mode:active { transform: scale(.97); }
+.mode strong { font-family: var(--display); font-size: 20px; font-weight: 700; letter-spacing: -.02em; display: flex; align-items: center; gap: 8px; }
+.mode small { color: var(--muted); font-size: 13px; line-height: 1.35; }
+.mode.primary { background: var(--fg); color: var(--card); box-shadow: none; }
+.mode.primary small { color: #4d4a55; }
+.live-dot { width: 9px; height: 9px; border-radius: 50%; background: #ff4d6a; box-shadow: 0 0 0 4px rgba(255,77,106,.22); }
+
+/* ---------- live setup + lobby ---------- */
+#live, #lobby { padding: 28px 26px 26px; gap: 16px; overflow-y: auto; }
+.roomcode { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: var(--chip); border-radius: 18px; padding: 16px 18px; box-shadow: inset 0 0 0 1px var(--line); }
+.roomcode .code { font-family: var(--display); font-weight: 800; font-size: 38px; letter-spacing: .14em; line-height: 1; }
+.plist { display: flex; flex-direction: column; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.plist li { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--chip); font-weight: 600; }
+.plist .av { width: 26px; height: 26px; border-radius: 50%; flex: none; }
+.plist .tag { margin-left: auto; font-size: 11px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+.plist li.empty { background: transparent; box-shadow: inset 0 0 0 1px dashed var(--line); border: 1px dashed var(--line); color: var(--muted); font-weight: 500; }
+
+/* ---------- colour screens ---------- */
+.on { color: var(--on, #fff); }
+.counter { font-size: 13px; font-weight: 700; letter-spacing: .14em; opacity: .7; }
+#memorize { cursor: pointer; padding: 26px; }
+.mem-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.clock { text-align: right; }
+.clock .big { font-family: var(--display); font-weight: 700; font-size: clamp(84px, 26vw, 120px); line-height: .82; letter-spacing: -.05em; font-variant-numeric: tabular-nums; }
+.clock .big i { font-style: normal; opacity: .45; }
+.clock .cap { font-size: 13px; font-weight: 600; margin-top: 8px; opacity: .85; }
+.mem-foot { margin-top: auto; display: flex; justify-content: space-between; align-items: flex-end; font-size: 13px; font-weight: 600; opacity: .75; gap: 12px; }
+
+#pick { flex-direction: row; }
+.strips { display: flex; height: 100%; flex: none; transition: opacity .2s; }
+#pick.locked .strips { opacity: .35; pointer-events: none; }
+.strip { position: relative; width: 46px; height: 100%; touch-action: none; cursor: ns-resize; }
+.strip:focus-visible { outline: 3px solid var(--fg); outline-offset: -3px; }
+#sH { background: linear-gradient(to bottom, #f00 0%, #ff0 16.66%, #0f0 33.33%, #0ff 50%, #00f 66.66%, #f0f 83.33%, #f00 100%); }
+.knob {
+  position: absolute; left: 50%; width: 30px; height: 30px; border-radius: 50%;
+  background: #fff; transform: translate(-50%, -50%);
+  box-shadow: 0 2px 8px rgba(0,0,0,.35), 0 0 0 1px rgba(0,0,0,.12);
+  pointer-events: none; transition: width .1s, height .1s;
+}
+.strip.drag .knob { width: 36px; height: 36px; }
+.pick-body { flex: 1; min-width: 0; padding: 26px 22px 22px; display: flex; flex-direction: column; }
+.pick-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.readout { font-size: 13px; font-weight: 600; opacity: .75; font-variant-numeric: tabular-nums; }
+.pick-help { margin-top: auto; font-size: 13px; line-height: 1.4; opacity: .75; max-width: 24ch; }
+.lock { margin-top: 14px; align-self: flex-end; box-shadow: 0 10px 30px -8px rgba(0,0,0,.45); }
+
+#reveal .half { flex: 1; padding: 22px 24px; display: flex; flex-direction: column; position: relative; min-height: 0; }
+.half .lab { font-size: 12px; font-weight: 600; opacity: .65; letter-spacing: .04em; }
+.half .val { font-size: 14px; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.half .meta { margin-top: auto; }
+.score {
+  position: absolute; right: 24px; top: 16px; text-align: right;
+  font-family: var(--display); font-weight: 700; font-size: clamp(76px, 24vw, 104px);
+  line-height: .9; letter-spacing: -.05em; font-variant-numeric: tabular-nums;
+}
+.score small { display: block; font-family: var(--body); font-size: 13px; letter-spacing: 0; font-weight: 600; opacity: .7; margin-top: 6px; }
+.rev-actions { position: absolute; right: 20px; bottom: 20px; left: 20px; display: flex; justify-content: flex-end; }
+#reveal.live .half .meta { margin-top: 0; }
+#reveal.live #revBot { justify-content: flex-start; }
+.rboard {
+  margin-top: 12px; background: rgba(12,11,15,.86); color: var(--fg); border-radius: 16px; padding: 6px 12px;
+  backdrop-filter: blur(6px); max-height: calc(100% - 120px); overflow-y: auto;
+}
+.rrow { display: grid; grid-template-columns: 26px 1fr auto auto; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.rrow:last-child { border-bottom: 0; }
+.rrow .sw { width: 26px; height: 26px; border-radius: 8px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); }
+.rrow .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.rrow .sc { font-weight: 800; font-variant-numeric: tabular-nums; }
+.rrow .tt { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 4.6em; text-align: right; }
+.rrow.top .sc { color: var(--win); }
+
+/* ---------- summary / final ---------- */
+.total { display: flex; align-items: baseline; gap: 8px; }
+.total .big { font-family: var(--display); font-weight: 800; font-size: clamp(72px, 22vw, 96px); letter-spacing: -.05em; line-height: .85; font-variant-numeric: tabular-nums; }
+.total .of { color: var(--muted); font-weight: 600; font-size: 18px; }
+.verdict { font-family: var(--display); font-size: 22px; font-weight: 700; letter-spacing: -.02em; margin: 0; }
+.rounds { display: flex; flex-direction: column; gap: 8px; }
+.round { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 12px; }
+.round .n { color: var(--muted); font-size: 12px; font-weight: 700; }
+.pair { display: flex; height: 40px; border-radius: 10px; overflow: hidden; }
+.pair div { flex: 1; }
+.round .s { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }
+.legend { display: grid; grid-template-columns: 22px 1fr auto; gap: 12px; font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.legend .lr { display: flex; justify-content: space-between; }
+
+.board-wrap { overflow-x: auto; }
+.board { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.board th, .board td { padding: 10px 6px; text-align: right; border-bottom: 1px solid var(--line); font-size: 14px; white-space: nowrap; }
+.board th:first-child, .board td:first-child { text-align: left; }
+.board thead th { color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; max-width: 7em; overflow: hidden; text-overflow: ellipsis; }
+.board .sw { display: inline-block; width: 18px; height: 18px; border-radius: 5px; vertical-align: middle; margin-right: 6px; }
+.board tbody td.best { font-weight: 800; }
+.board tfoot td { font-weight: 800; font-size: 16px; border-bottom: 0; padding-top: 14px; }
+.board tfoot td.win { color: var(--win); }
+.crown { font-family: var(--display); font-size: 36px; font-weight: 800; letter-spacing: -.03em; line-height: 1; margin: 0; text-wrap: balance; }
+.crown em { font-style: normal; color: var(--win); }
+
+.toast { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); background: var(--fg); color: var(--card); padding: 9px 14px; border-radius: 999px; font-size: 13px; font-weight: 700; z-index: 5; white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dial { animation: none; }
+  .pill, .mode { transition: none; }
+}
+@media (max-height: 620px) {
+  .brand h1 { font-size: 48px; }
+  .blurb { font-size: 15px; }
+  .mode { min-height: 86px; }
+}
+</style>
+</head>
+<body>
+<main class="card" id="card">
+
+  <!-- HOME -->
+  <section class="screen" id="home">
+    <div class="brand">
+      <h1><span>hue</span><span>recall</span></h1>
+      <div class="dial" aria-hidden="true"></div>
+    </div>
+    <p class="blurb">Colour memory is worse than you think. You'll see <b>five colours</b>, each for a few seconds, then rebuild each one from scratch. Every guess is scored <b>0 to 10</b>.</p>
+    <div class="grow"></div>
+    <div class="modes">
+      <button class="mode primary" id="btnLive" type="button"><strong><span class="live-dot" aria-hidden="true"></span>Play live</strong><small>Same colour, same moment. Scores after every round.</small></button>
+      <button class="mode" id="btnSolo" type="button"><strong>Solo</strong><small>Practise on your own</small></button>
+    </div>
+    <div class="settings">
+      <span class="eyebrow">Solo timer</span>
+      <div class="seg" role="group" aria-label="Seconds to memorise each colour in solo" data-seg="solo">
+        <button type="button" data-t="5">5s</button>
+        <button type="button" data-t="3">3s</button>
+        <button type="button" data-t="1">1s</button>
+      </div>
+    </div>
+    <p class="hint err" id="homeMsg" hidden></p>
+  </section>
+
+  <!-- LIVE: create or join -->
+  <section class="screen" id="live" hidden>
+    <span class="eyebrow">Play live</span>
+    <h2 class="title2">Play with a friend</h2>
+    <label class="hint" for="myName">Your name</label>
+    <input class="field" id="myName" maxlength="16" autocomplete="nickname" placeholder="Your name">
+    <button class="pill" type="button" id="createRoom">Create a room</button>
+    <div class="or">or join one</div>
+    <form class="codebox" id="joinForm" autocomplete="off">
+      <input class="field" id="joinCode" maxlength="6" placeholder="Room code" aria-label="Room code" spellcheck="false">
+      <button class="pill small" type="submit">Join</button>
+    </form>
+    <p class="hint" id="liveMsg" hidden></p>
+    <div class="foot"><button class="pill ghost" type="button" id="liveBack">Back</button></div>
+  </section>
+
+  <!-- LOBBY -->
+  <section class="screen" id="lobby" hidden>
+    <span class="eyebrow">Room code</span>
+    <div class="roomcode">
+      <span class="code" id="lobbyCode">------</span>
+      <button class="pill small" type="button" id="copyCode">Copy</button>
+    </div>
+    <p class="hint" id="lobbyHint"></p>
+    <ul class="plist" id="plist"></ul>
+    <div class="settings" id="lobbyTimer">
+      <span class="eyebrow">Seconds per colour</span>
+      <div class="seg" role="group" aria-label="Seconds to memorise each colour" data-seg="live">
+        <button type="button" data-t="5">5s</button>
+        <button type="button" data-t="3">3s</button>
+        <button type="button" data-t="1">1s</button>
+      </div>
+    </div>
+    <p class="hint" id="lobbyTimerText" hidden></p>
+    <div class="foot">
+      <button class="pill ghost" type="button" data-leave>Leave</button>
+      <button class="pill" type="button" id="startGame">Start game</button>
+    </div>
+  </section>
+
+  <!-- MEMORISE -->
+  <section class="screen on" id="memorize" hidden>
+    <div class="mem-top">
+      <span class="counter tnum" id="memCount">1 / 5</span>
+      <div class="clock">
+        <div class="big" id="clock">5<i>.00</i></div>
+        <div class="cap">seconds to remember</div>
+      </div>
+    </div>
+    <div class="mem-foot">
+      <span id="memWho"></span>
+      <span>Tap when you've got it</span>
+    </div>
+  </section>
+
+  <!-- PICK -->
+  <section class="screen on" id="pick" hidden>
+    <div class="strips">
+      <div class="strip" id="sH" role="slider" tabindex="0" aria-label="Hue" aria-valuemin="0" aria-valuemax="359"><div class="knob"></div></div>
+      <div class="strip" id="sS" role="slider" tabindex="0" aria-label="Saturation" aria-valuemin="0" aria-valuemax="100"><div class="knob"></div></div>
+      <div class="strip" id="sB" role="slider" tabindex="0" aria-label="Brightness" aria-valuemin="0" aria-valuemax="100"><div class="knob"></div></div>
+    </div>
+    <div class="pick-body">
+      <div class="pick-top">
+        <span class="counter tnum" id="pickCount">1 / 5</span>
+        <span class="readout" id="readout">H0 S0 B0</span>
+      </div>
+      <p class="pick-help" id="pickHelp" aria-live="polite"></p>
+      <button class="pill lock" type="button" id="lockIn">Lock it in</button>
+    </div>
+  </section>
+
+  <!-- REVEAL -->
+  <section class="screen" id="reveal" hidden>
+    <div class="half on" id="revTop">
+      <span class="counter tnum" id="revCount">1 / 5</span>
+      <div class="score" id="revScore">0.00<small>out of 10</small></div>
+      <div class="meta" style="margin-top:auto"><div class="lab">Your guess</div><div class="val" id="revPick"></div></div>
+    </div>
+    <div class="half on" id="revBot">
+      <div class="meta"><div class="lab">The real one</div><div class="val" id="revTarget"></div></div>
+      <div class="rboard" id="rboard" hidden></div>
+      <div class="rev-actions"><button class="pill" type="button" id="revNext">Next</button></div>
+    </div>
+  </section>
+
+  <!-- SOLO SUMMARY -->
+  <section class="screen scroll" id="summary" hidden>
+    <span class="eyebrow">Final score</span>
+    <div class="total"><span class="big" id="sumTotal">0.00</span><span class="of">/ 50</span></div>
+    <p class="verdict" id="sumVerdict"></p>
+    <div class="legend"><span></span><span class="lr"><span>Your guess</span><span>Real</span></span><span>Score</span></div>
+    <div class="rounds" id="sumRounds"></div>
+    <div class="foot">
+      <button class="pill ghost" type="button" data-home>Home</button>
+      <button class="pill" type="button" id="soloAgain">Play again</button>
+    </div>
+  </section>
+
+  <!-- LIVE FINAL -->
+  <section class="screen scroll" id="final" hidden>
+    <span class="eyebrow">Final results</span>
+    <h2 class="crown" id="crown"></h2>
+    <div class="board-wrap"><table class="board" id="board"></table></div>
+    <p class="hint" id="finalHint"></p>
+    <div class="foot">
+      <button class="pill ghost" type="button" data-leave>Leave room</button>
+      <button class="pill" type="button" id="rematch">Play again</button>
+    </div>
+  </section>
+
+  <div class="toast" id="toast" hidden></div>
+</main>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (s) => document.querySelector(s);
+  const ROUNDS = 5;
+  const MAX_PLAYERS = 4;
+  const PREFIX = "huerecall-v1-";
+
+  /* ---------- storage (per-device convenience only) ---------- */
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("huerecall:" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("huerecall:" + k, JSON.stringify(v)); } catch {} },
+  };
+
+  /* ---------- seeded colours ---------- */
+  const ALPH = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  function newCode() {
+    const a = new Uint32Array(6);
+    crypto.getRandomValues(a);
+    return Array.from(a, (x) => ALPH[x % ALPH.length]).join("");
+  }
+  function hashStr(s) {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+  function mulberry32(a) {
+    return () => {
+      a |= 0; a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function makeColors(seed) {
+    const r = mulberry32(hashStr(seed));
+    const base = r() * 360;
+    const out = [];
+    for (let i = 0; i < ROUNDS; i++) {
+      const h = Math.round((base + i * 137.508 + (r() - 0.5) * 50 + 720) % 360) % 360;
+      out.push({
+        h, s: Math.round(30 + r() * 70), b: Math.round(32 + r() * 68),
+        start: { h: Math.floor(r() * 360), s: Math.round(15 + r() * 85), b: Math.round(15 + r() * 85) },
+      });
+    }
+    return out;
+  }
+
+  /* ---------- colour maths ---------- */
+  function hsvToRgb(h, s, v) {
+    s /= 100; v /= 100;
+    const k = (n) => (n + h / 60) % 6;
+    const f = (n) => v * (1 - s * Math.max(0, Math.min(k(n), 4 - k(n), 1)));
+    return [f(5), f(3), f(1)].map((x) => Math.round(x * 255));
+  }
+  const css = (c) => { const [r, g, b] = hsvToRgb(c.h, c.s, c.b); return `rgb(${r} ${g} ${b})`; };
+  function toLab([r, g, b]) {
+    const lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+    const R = lin(r), G = lin(g), B = lin(b);
+    const X = (R * 0.4124564 + G * 0.3575761 + B * 0.1804375) / 0.95047;
+    const Y = R * 0.2126729 + G * 0.7151522 + B * 0.072175;
+    const Z = (R * 0.0193339 + G * 0.119192 + B * 0.9503041) / 1.08883;
+    const f = (t) => (t > 216 / 24389 ? Math.cbrt(t) : (24389 / 27 * t + 16) / 116);
+    const fx = f(X), fy = f(Y), fz = f(Z);
+    return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+  }
+  // CIEDE2000 perceptual colour difference
+  function deltaE([L1, a1, b1], [L2, a2, b2]) {
+    const rad = Math.PI / 180, deg = 180 / Math.PI, p7 = 25 ** 7;
+    const C1 = Math.hypot(a1, b1), C2 = Math.hypot(a2, b2), Cb = (C1 + C2) / 2;
+    const G = 0.5 * (1 - Math.sqrt(Cb ** 7 / (Cb ** 7 + p7)));
+    const a1p = (1 + G) * a1, a2p = (1 + G) * a2;
+    const C1p = Math.hypot(a1p, b1), C2p = Math.hypot(a2p, b2);
+    const hp = (b, a) => { if (a === 0 && b === 0) return 0; const h = Math.atan2(b, a) * deg; return h < 0 ? h + 360 : h; };
+    const h1p = hp(b1, a1p), h2p = hp(b2, a2p);
+    const dLp = L2 - L1, dCp = C2p - C1p;
+    let dhp = 0;
+    if (C1p * C2p !== 0) { dhp = h2p - h1p; if (dhp > 180) dhp -= 360; else if (dhp < -180) dhp += 360; }
+    const dHp = 2 * Math.sqrt(C1p * C2p) * Math.sin((dhp * rad) / 2);
+    const Lbp = (L1 + L2) / 2, Cbp = (C1p + C2p) / 2;
+    let hbp;
+    if (C1p * C2p === 0) hbp = h1p + h2p;
+    else if (Math.abs(h1p - h2p) <= 180) hbp = (h1p + h2p) / 2;
+    else hbp = (h1p + h2p + (h1p + h2p < 360 ? 360 : -360)) / 2;
+    const T = 1 - 0.17 * Math.cos((hbp - 30) * rad) + 0.24 * Math.cos(2 * hbp * rad)
+      + 0.32 * Math.cos((3 * hbp + 6) * rad) - 0.2 * Math.cos((4 * hbp - 63) * rad);
+    const dTheta = 30 * Math.exp(-(((hbp - 275) / 25) ** 2));
+    const Rc = 2 * Math.sqrt(Cbp ** 7 / (Cbp ** 7 + p7));
+    const Sl = 1 + (0.015 * (Lbp - 50) ** 2) / Math.sqrt(20 + (Lbp - 50) ** 2);
+    const Sc = 1 + 0.045 * Cbp, Sh = 1 + 0.015 * Cbp * T;
+    const Rt = -Math.sin(2 * dTheta * rad) * Rc;
+    return Math.sqrt((dLp / Sl) ** 2 + (dCp / Sc) ** 2 + (dHp / Sh) ** 2 + Rt * (dCp / Sc) * (dHp / Sh));
+  }
+  // 0–10: a difference of 0 scores 10, ~10 scores ~8, ~25 scores ~4.6, 60+ scores ~0.
+  function scoreOf(guess, target) {
+    const d = deltaE(toLab(hsvToRgb(guess.h, guess.s, guess.b)), toLab(hsvToRgb(target.h, target.s, target.b)));
+    return Math.round(1000 * Math.exp(-((d / 30) ** 1.4))) / 100;
+  }
+  const inkFor = (c) => (toLab(hsvToRgb(c.h, c.s, c.b))[0] > 62 ? "#0b0a0d" : "#ffffff");
+  const hsbLabel = (c) => `H${c.h} S${c.s} B${c.b}`;
+  const fmt = (n) => (Number(n) || 0).toFixed(2);
+  const sum = (a) => a.reduce((x, y) => x + (Number(y) || 0), 0);
+  const cleanName = (n) => String(n || "").replace(/\s+/g, " ").trim().slice(0, 16) || "Player";
+  const avatarColor = (id) => css({ h: hashStr(id) % 360, s: 65, b: 90 });
+  function cleanGuess(g) {
+    if (!g || typeof g !== "object") return null;
+    const n = (v, max) => Math.min(max, Math.max(0, Math.round(Number(v) || 0)));
+    return { h: n(g.h, 359), s: n(g.s, 100), b: n(g.b, 100) };
+  }
+
+  /* ---------- screens ---------- */
+  const SCREENS = ["home", "live", "lobby", "memorize", "pick", "reveal", "summary", "final"];
+  let rafId = 0;
+  let current = "home";
+  function show(id) {
+    cancelAnimationFrame(rafId);
+    current = id;
+    for (const s of SCREENS) $("#" + s).hidden = s !== id;
+  }
+  let toastT;
+  function toast(msg) {
+    const t = $("#toast"); t.textContent = msg; t.hidden = false;
+    clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), 2200);
+  }
+  function setOn(el, c) { el.style.backgroundColor = css(c); el.style.setProperty("--on", inkFor(c)); }
+
+  /* ---------- timer setting ---------- */
+  let soloSeconds = store.get("seconds", 5);
+  function paintSeg(which, value) {
+    document.querySelectorAll(`[data-seg="${which}"] button`).forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.t === value)));
+  }
+  paintSeg("solo", soloSeconds);
+  document.querySelector('[data-seg="solo"]').addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    soloSeconds = +b.dataset.t; store.set("seconds", soloSeconds); paintSeg("solo", soloSeconds);
+  });
+
+  /* ======================================================================
+     GAME (shared by solo and live)
+     ====================================================================== */
+  const G = { live: false, colors: [], seconds: 5, round: 0, guess: null, locked: false, ready: false, guesses: [], scores: [] };
+
+  function beginRound(i) {
+    G.round = i; G.locked = false; G.ready = false;
+    const c = G.colors[i];
+    setOn($("#memorize"), c);
+    $("#memCount").textContent = `${i + 1} / ${ROUNDS}`;
+    $("#memWho").textContent = G.live ? `Live · ${L.players.length} players` : "";
+    show("memorize");
+    const dur = G.seconds * 1000, t0 = performance.now(), clock = $("#clock");
+    let last = "";
+    const tick = (now) => {
+      const left = Math.max(0, dur - (now - t0));
+      const txt = (left / 1000).toFixed(2);
+      if (txt !== last) { const [a, b] = txt.split("."); clock.innerHTML = `${a}<i>.${b}</i>`; last = txt; }
+      if (left <= 0) return startPick();
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    // animation frames pause in background tabs; this guarantees the switch happens on time
+    clearTimeout(memTimer);
+    memTimer = setTimeout(() => { if (current === "memorize" && G.round === i) startPick(); }, dur + 30);
+  }
+  let memTimer = 0;
+  $("#memorize").addEventListener("click", () => { if (current === "memorize") startPick(); });
+  document.addEventListener("keydown", (e) => {
+    if ((e.key === "Enter" || e.key === " ") && current === "memorize") { e.preventDefault(); startPick(); }
+  });
+
+  /* ---------- picker ---------- */
+  const strips = { h: $("#sH"), s: $("#sS"), b: $("#sB") };
+  const KNOB_PAD = 18;
+  function startPick() {
+    cancelAnimationFrame(rafId);
+    clearTimeout(memTimer);
+    G.guess = { ...G.colors[G.round].start };
+    G.locked = false;
+    $("#pick").classList.remove("locked");
+    $("#pickCount").textContent = `${G.round + 1} / ${ROUNDS}`;
+    $("#pickHelp").textContent = "Drag the strips: hue, saturation, brightness. Arrow keys work too.";
+    $("#lockIn").disabled = false;
+    $("#lockIn").textContent = "Lock it in";
+    paintPick();
+    show("pick");
+    if (G.live) updateWaits();
+  }
+  function paintPick() {
+    const g = G.guess;
+    setOn($("#pick"), g);
+    strips.s.style.background = `linear-gradient(to bottom, ${css({ h: g.h, s: 100, b: g.b })}, ${css({ h: g.h, s: 0, b: g.b })})`;
+    strips.b.style.background = `linear-gradient(to bottom, ${css({ h: g.h, s: g.s, b: 100 })}, #000)`;
+    place(strips.h, g.h / 359); place(strips.s, 1 - g.s / 100); place(strips.b, 1 - g.b / 100);
+    strips.h.setAttribute("aria-valuenow", g.h);
+    strips.s.setAttribute("aria-valuenow", g.s);
+    strips.b.setAttribute("aria-valuenow", g.b);
+    $("#readout").textContent = hsbLabel(g);
+  }
+  function place(strip, t) { strip.firstElementChild.style.top = `calc(${KNOB_PAD}px + (100% - ${KNOB_PAD * 2}px) * ${t})`; }
+  function setFromY(key, strip, clientY) {
+    const r = strip.getBoundingClientRect();
+    const t = Math.min(1, Math.max(0, (clientY - r.top - KNOB_PAD) / (r.height - KNOB_PAD * 2)));
+    if (key === "h") G.guess.h = Math.round(t * 359);
+    else G.guess[key] = Math.round((1 - t) * 100);
+    paintPick();
+  }
+  for (const [key, strip] of Object.entries(strips)) {
+    strip.addEventListener("pointerdown", (e) => {
+      if (G.locked) return;
+      e.preventDefault(); strip.focus({ preventScroll: true });
+      strip.setPointerCapture(e.pointerId); strip.classList.add("drag");
+      setFromY(key, strip, e.clientY);
+    });
+    strip.addEventListener("pointermove", (e) => { if (!G.locked && strip.hasPointerCapture(e.pointerId)) setFromY(key, strip, e.clientY); });
+    const end = (e) => { strip.classList.remove("drag"); if (strip.hasPointerCapture(e.pointerId)) strip.releasePointerCapture(e.pointerId); };
+    strip.addEventListener("pointerup", end); strip.addEventListener("pointercancel", end);
+    strip.addEventListener("keydown", (e) => {
+      if (G.locked) return;
+      const step = e.shiftKey ? 10 : 1;
+      let d = 0;
+      if (e.key === "ArrowUp" || e.key === "ArrowRight") d = key === "h" ? -step : step;
+      else if (e.key === "ArrowDown" || e.key === "ArrowLeft") d = key === "h" ? step : -step;
+      else if (e.key === "Enter") { e.preventDefault(); lockIn(); return; }
+      else return;
+      e.preventDefault();
+      if (key === "h") G.guess.h = (G.guess.h + d + 360) % 360;
+      else G.guess[key] = Math.min(100, Math.max(0, G.guess[key] + d));
+      paintPick();
+    });
+  }
+  $("#lockIn").addEventListener("click", lockIn);
+
+  function lockIn() {
+    if (current !== "pick" || G.locked) return;
+    const g = cleanGuess(G.guess);
+    G.locked = true;
+    if (!G.live) {
+      const target = G.colors[G.round];
+      const sc = scoreOf(g, target);
+      G.guesses[G.round] = g; G.scores[G.round] = sc;
+      showReveal(g, sc, null);
+      return;
+    }
+    $("#pick").classList.add("locked");
+    $("#lockIn").disabled = true;
+    $("#lockIn").textContent = "Locked in";
+    sendToHost({ t: "guess", i: G.round, guess: g });
+    updateWaits();
+  }
+
+  /* ---------- reveal ---------- */
+  function showReveal(guess, score, rows) {
+    const target = G.colors[G.round];
+    setOn($("#revTop"), guess); setOn($("#revBot"), target);
+    $("#revCount").textContent = `${G.round + 1} / ${ROUNDS}`;
+    $("#revPick").textContent = hsbLabel(guess);
+    $("#revTarget").textContent = hsbLabel(target);
+    const last = G.round === ROUNDS - 1;
+    const btn = $("#revNext");
+    btn.disabled = false;
+    $("#reveal").classList.toggle("live", !!rows);
+    const board = $("#rboard");
+    if (rows) {
+      board.hidden = false; board.textContent = "";
+      const sorted = [...rows].sort((a, b) => b.score - a.score);
+      sorted.forEach((r, idx) => {
+        const row = document.createElement("div");
+        row.className = "rrow" + (idx === 0 && sorted.length > 1 ? " top" : "");
+        const sw = document.createElement("div"); sw.className = "sw"; sw.style.background = css(r.guess);
+        const nm = document.createElement("div"); nm.className = "nm"; nm.textContent = r.name + (r.id === L.myId ? " (you)" : "");
+        const sc = document.createElement("div"); sc.className = "sc"; sc.textContent = fmt(r.score);
+        const tt = document.createElement("div"); tt.className = "tt"; tt.textContent = fmt(r.total) + " total";
+        row.append(sw, nm, sc, tt); board.append(row);
+      });
+      btn.textContent = last ? "See final results" : "Ready for next";
+    } else {
+      board.hidden = true;
+      btn.textContent = last ? "See score" : "Next colour";
+    }
+    show("reveal");
+    countUp($("#revScore"), score);
+  }
+  function countUp(el, target) {
+    const set = (v) => (el.innerHTML = `${fmt(v)}<small>out of 10</small>`);
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return set(target);
+    const t0 = performance.now(), dur = 650;
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / dur);
+      set(target * (1 - (1 - k) ** 3));
+      if (k < 1) rafId = requestAnimationFrame(step);
+    };
+    rafId = requestAnimationFrame(step);
+  }
+  $("#revNext").addEventListener("click", () => {
+    if (!G.live) {
+      if (G.round < ROUNDS - 1) beginRound(G.round + 1); else showSummary();
+      return;
+    }
+    if (G.ready) return;
+    G.ready = true;
+    $("#revNext").disabled = true;
+    sendToHost({ t: "ready", i: G.round });
+    updateWaits();
+  });
+
+  /* ======================================================================
+     SOLO
+     ====================================================================== */
+  function startSolo() {
+    Object.assign(G, { live: false, colors: makeColors(newCode()), seconds: soloSeconds, guesses: [], scores: [] });
+    beginRound(0);
+  }
+  $("#btnSolo").addEventListener("click", startSolo);
+  $("#soloAgain").addEventListener("click", startSolo);
+  document.querySelectorAll("[data-home]").forEach((b) => b.addEventListener("click", () => show("home")));
+
+  function verdict(t) {
+    if (t >= 46) return "Eyes like a spectrometer.";
+    if (t >= 40) return "Seriously sharp colour memory.";
+    if (t >= 32) return "Better than most people.";
+    if (t >= 24) return "Close-ish. The hues got away from you.";
+    if (t >= 15) return "Your memory painted in watercolour.";
+    return "Bold choices. Very bold.";
+  }
+  function showSummary() {
+    const t = sum(G.scores);
+    $("#sumTotal").textContent = fmt(t);
+    $("#sumVerdict").textContent = verdict(t);
+    const box = $("#sumRounds"); box.textContent = "";
+    G.colors.forEach((c, i) => {
+      const row = document.createElement("div"); row.className = "round";
+      const n = document.createElement("span"); n.className = "n tnum"; n.textContent = i + 1;
+      const pair = document.createElement("div"); pair.className = "pair";
+      const a = document.createElement("div"); a.style.background = css(G.guesses[i]); a.title = "Your guess " + hsbLabel(G.guesses[i]);
+      const b = document.createElement("div"); b.style.background = css(c); b.title = "Real " + hsbLabel(c);
+      pair.append(a, b);
+      const s = document.createElement("span"); s.className = "s"; s.textContent = fmt(G.scores[i]);
+      row.append(n, pair, s); box.append(row);
+    });
+    show("summary");
+    $("#summary").scrollTop = 0;
+  }
+
+  /* ======================================================================
+     LIVE (PeerJS: the host's browser runs the game; others connect to it)
+     ====================================================================== */
+  const L = {
+    peer: null, isHost: false, active: false, code: "", myId: "", hostConn: null,
+    conns: new Map(), players: [], seconds: 5,
+    // host-only authority state
+    phase: "lobby", stage: "", round: 0, guesses: {}, scores: {}, readySet: new Set(),
+    // what clients know about who is done
+    lockedIds: [], readyIds: [],
+  };
+
+  $("#myName").value = store.get("name", "");
+  $("#btnLive").addEventListener("click", () => {
+    $("#homeMsg").hidden = true;
+    if (typeof Peer === "undefined") { liveMsg("Live play couldn't load its connection library. Check your internet connection and reload the page.", true); }
+    show("live");
+    if (!$("#myName").value) $("#myName").focus();
+  });
+  $("#liveBack").addEventListener("click", () => { leaveLive(); show("home"); });
+  $("#joinCode").addEventListener("input", (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""); });
+  document.querySelectorAll("[data-leave]").forEach((b) => b.addEventListener("click", () => { leaveLive(); show("home"); }));
+
+  function liveMsg(text, isErr) {
+    const m = $("#liveMsg"); m.textContent = text; m.className = "hint" + (isErr ? " err" : ""); m.hidden = !text;
+  }
+  function myName() {
+    const n = cleanName($("#myName").value);
+    $("#myName").value = n; store.set("name", n);
+    return n;
+  }
+  function setBusy(b) { $("#createRoom").disabled = b; $("#joinForm button").disabled = b; }
+  function peerErrorText(err) {
+    const t = err && err.type;
+    if (t === "peer-unavailable") return "No room with that code is open. Check the code with your friend, and make sure their game is still on the lobby screen.";
+    if (t === "network" || t === "server-error" || t === "socket-error" || t === "socket-closed") return "Couldn't reach the matchmaking server. Check your internet connection and try again.";
+    if (t === "browser-incompatible") return "This browser can't do live play. Try a recent Chrome, Edge, Firefox or Safari.";
+    if (t === "webrtc") return "The direct connection to your friend failed. Some school or work networks block this. Try a different network or a phone hotspot.";
+    return "Something went wrong with the connection. Try again.";
+  }
+
+  /* ----- create (host) ----- */
+  $("#createRoom").addEventListener("click", () => {
+    if (typeof Peer === "undefined") return liveMsg("Live play couldn't load. Check your internet connection and reload the page.", true);
+    leaveLive();
+    createRoom(myName(), 0);
+  });
+  function createRoom(name, attempt) {
+    setBusy(true); liveMsg("Creating a room…");
+    L.isHost = true; L.code = newCode(); L.seconds = store.get("liveSeconds", 5);
+    const peer = new Peer(PREFIX + L.code.toLowerCase());
+    L.peer = peer;
+    peer.on("open", (id) => {
+      L.myId = id; L.active = true; L.phase = "lobby";
+      L.players = [{ id, name }];
+      setBusy(false); liveMsg("");
+      sendLobby(); // renders our own lobby
+      show("lobby");
+    });
+    peer.on("connection", (conn) => {
+      conn.on("data", (msg) => hostReceive(conn, msg));
+      conn.on("close", () => hostDrop(conn.peer));
+      conn.on("error", () => hostDrop(conn.peer));
+    });
+    peer.on("disconnected", () => { if (L.active && L.peer === peer) { try { peer.reconnect(); } catch {} } });
+    peer.on("error", (err) => {
+      if (L.peer !== peer) return;
+      if (err.type === "unavailable-id" && attempt < 3) { peer.destroy(); return createRoom(name, attempt + 1); }
+      if (err.type === "peer-unavailable") return; // a joiner vanished; harmless
+      if (!L.active) { setBusy(false); liveMsg(peerErrorText(err), true); leaveLive(); }
+      else toast("Connection hiccup: " + (err.type || "unknown"));
+    });
+  }
+
+  /* ----- join (client) ----- */
+  $("#joinForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (typeof Peer === "undefined") return liveMsg("Live play couldn't load. Check your internet connection and reload the page.", true);
+    const code = $("#joinCode").value.trim().toUpperCase();
+    if (!/^[A-Z0-9]{6}$/.test(code)) return liveMsg("Room codes are 6 letters and numbers, like K7Q2PX.", true);
+    leaveLive();
+    joinRoom(code, myName());
+  });
+  function joinRoom(code, name) {
+    setBusy(true); liveMsg(`Joining room ${code}…`);
+    L.isHost = false; L.code = code; L.phase = "joining";
+    const peer = new Peer();
+    L.peer = peer;
+    const fail = (text) => { if (L.peer !== peer) return; setBusy(false); liveMsg(text, true); leaveLive(); show("live"); };
+    const timer = setTimeout(() => fail(`Couldn't reach room ${code}. Check the code, and make sure your friend still has the game open.`), 15000);
+    peer.on("open", (id) => {
+      L.myId = id;
+      const conn = peer.connect(PREFIX + code.toLowerCase(), { reliable: true });
+      L.hostConn = conn;
+      conn.on("open", () => { clearTimeout(timer); L.active = true; setBusy(false); liveMsg(""); conn.send({ t: "hello", name }); });
+      conn.on("data", (msg) => onMsg(msg));
+      conn.on("close", () => {
+        if (!L.active || L.peer !== peer) return;
+        leaveLive(); show("home");
+        const m = $("#homeMsg"); m.textContent = "The host left, so the room closed."; m.hidden = false;
+      });
+    });
+    peer.on("error", (err) => { clearTimeout(timer); if (!L.active) fail(peerErrorText(err)); else toast("Connection hiccup: " + (err.type || "unknown")); });
+  }
+
+  function leaveLive() {
+    const peer = L.peer;
+    L.active = false; L.peer = null; L.hostConn = null;
+    L.conns.clear(); L.players = []; L.guesses = {}; L.scores = {}; L.readySet = new Set();
+    L.phase = "lobby"; L.stage = ""; L.lockedIds = []; L.readyIds = [];
+    G.live = false;
+    setBusy(false);
+    if (peer) { try { peer.destroy(); } catch {} }
+  }
+  window.addEventListener("pagehide", () => { if (L.peer) try { L.peer.destroy(); } catch {} });
+
+  /* ----- messaging ----- */
+  function sendToHost(msg) {
+    if (L.isHost) hostHandle(L.myId, msg);
+    else if (L.hostConn && L.hostConn.open) L.hostConn.send(msg);
+  }
+  function broadcast(msg) {
+    for (const c of L.conns.values()) { if (c.open) { try { c.send(msg); } catch {} } }
+    onMsg(msg);
+  }
+  function sendLobby() {
+    broadcast({ t: "lobby", code: L.code, seconds: L.seconds, players: L.players });
+  }
+
+  /* ----- host authority ----- */
+  function hostReceive(conn, msg) {
+    if (!msg || typeof msg !== "object") return;
+    const id = conn.peer;
+    if (msg.t === "hello") {
+      if (L.conns.has(id)) return;
+      if (L.phase === "game") { conn.send({ t: "nope", msg: "That room is in the middle of a game. Ask your friend to let you in when it ends." }); setTimeout(() => conn.close(), 400); return; }
+      if (L.players.length >= MAX_PLAYERS) { conn.send({ t: "nope", msg: `That room is full (${MAX_PLAYERS} players max).` }); setTimeout(() => conn.close(), 400); return; }
+      L.conns.set(id, conn);
+      const name = cleanName(msg.name);
+      L.players.push({ id, name });
+      sendLobby();
+      toast(`${name} joined`);
+      return;
+    }
+    if (!L.conns.has(id)) return;
+    hostHandle(id, msg);
+  }
+  function hostHandle(id, msg) {
+    if (msg.t === "guess") {
+      if (L.phase !== "game" || L.stage !== "pick" || msg.i !== L.round || L.guesses[id]) return;
+      const g = cleanGuess(msg.guess); if (!g) return;
+      L.guesses[id] = g;
+      hostCheckGuesses();
+    } else if (msg.t === "ready") {
+      if (L.phase !== "game" || L.stage !== "reveal" || msg.i !== L.round) return;
+      L.readySet.add(id);
+      hostCheckReady();
+    }
+  }
+  function hostDrop(id) {
+    if (!L.isHost || !L.conns.has(id)) return;
+    L.conns.delete(id);
+    const p = L.players.find((x) => x.id === id);
+    L.players = L.players.filter((x) => x.id !== id);
+    delete L.guesses[id]; L.readySet.delete(id);
+    if (p) toast(`${p.name} left`);
+    sendLobby();
+    if (L.phase === "game") { if (L.stage === "pick") hostCheckGuesses(); else if (L.stage === "reveal") hostCheckReady(); }
+  }
+  function hostStart() {
+    if (!L.isHost || L.players.length < 2) return;
+    L.phase = "game"; L.scores = {};
+    broadcast({ t: "start", seed: newCode(), seconds: L.seconds, players: L.players });
+    hostRound(0);
+  }
+  function hostRound(i) {
+    L.round = i; L.stage = "pick"; L.guesses = {}; L.readySet = new Set();
+    broadcast({ t: "round", i });
+  }
+  function hostCheckGuesses() {
+    const ids = L.players.map((p) => p.id);
+    const locked = ids.filter((id) => L.guesses[id]);
+    if (locked.length < ids.length) { broadcast({ t: "locked", ids: locked }); return; }
+    const target = G.colors[L.round];
+    const rows = L.players.map((p) => {
+      const g = L.guesses[p.id];
+      const s = scoreOf(g, target);
+      (L.scores[p.id] = L.scores[p.id] || [])[L.round] = s;
+      return { id: p.id, name: p.name, guess: g, score: s, total: sum(L.scores[p.id]) };
+    });
+    L.stage = "reveal";
+    broadcast({ t: "result", i: L.round, rows });
+  }
+  function hostCheckReady() {
+    const ids = L.players.map((p) => p.id);
+    if (!ids.every((id) => L.readySet.has(id))) { broadcast({ t: "ready", ids: [...L.readySet] }); return; }
+    if (L.round < ROUNDS - 1) hostRound(L.round + 1);
+    else {
+      L.phase = "final"; L.stage = "final";
+      // include everyone who played, even if they left mid-game
+      broadcast({ t: "final", rows: Object.keys(L.scores).map((id) => ({ id, name: nameOf(id), scores: L.scores[id] })) });
+    }
+  }
+  const knownNames = new Map();
+  function nameOf(id) { const p = L.players.find((x) => x.id === id); return p ? p.name : (knownNames.get(id) || "Player"); }
+
+  /* ----- everyone (including host) reacts to broadcasts ----- */
+  function onMsg(m) {
+    if (!m || typeof m !== "object") return;
+    switch (m.t) {
+      case "lobby":
+        L.players = Array.isArray(m.players) ? m.players.map((p) => ({ id: String(p.id), name: cleanName(p.name) })) : [];
+        L.players.forEach((p) => knownNames.set(p.id, p.name));
+        L.seconds = [1, 3, 5].includes(m.seconds) ? m.seconds : 5;
+        L.code = String(m.code || L.code);
+        if (current === "live" || current === "lobby" || L.phase === "joining") { L.phase = L.isHost ? L.phase : "lobby"; renderLobby(); if (current !== "lobby") show("lobby"); }
+        else if (current === "final") renderFinalFoot();
+        else updateWaits();
+        break;
+      case "start":
+        G.live = true; G.colors = makeColors(String(m.seed)); G.seconds = [1, 3, 5].includes(m.seconds) ? m.seconds : 5;
+        G.guesses = []; G.scores = [];
+        if (!L.isHost) L.phase = "game";
+        break;
+      case "round":
+        L.lockedIds = []; L.readyIds = [];
+        beginRound(Number(m.i) || 0);
+        break;
+      case "locked":
+        L.lockedIds = Array.isArray(m.ids) ? m.ids : [];
+        updateWaits();
+        break;
+      case "result": {
+        G.round = Number(m.i) || 0;
+        L.readyIds = [];
+        const rows = (m.rows || []).map((r) => ({ id: String(r.id), name: cleanName(r.name), guess: cleanGuess(r.guess) || { h: 0, s: 0, b: 0 }, score: Number(r.score) || 0, total: Number(r.total) || 0 }));
+        rows.forEach((r) => knownNames.set(r.id, r.name));
+        const me = rows.find((r) => r.id === L.myId) || rows[0];
+        G.ready = false;
+        showReveal(me.guess, me.score, rows);
+        updateWaits();
+        break;
+      }
+      case "ready":
+        L.readyIds = Array.isArray(m.ids) ? m.ids : [];
+        updateWaits();
+        break;
+      case "final":
+        if (!L.isHost) L.phase = "final";
+        showFinal(m.rows || []);
+        break;
+      case "nope":
+        setBusy(false);
+        leaveLive();
+        show("live");
+        liveMsg(String(m.msg || "The host couldn't let you in."), true);
+        break;
+    }
+  }
+
+  function waitingText(doneIds) {
+    const left = L.players.filter((p) => p.id !== L.myId && !doneIds.includes(p.id)).map((p) => p.name);
+    if (!left.length) return "";
+    if (left.length === 1) return `Waiting for ${left[0]}…`;
+    return `Waiting for ${left.slice(0, -1).join(", ")} and ${left[left.length - 1]}…`;
+  }
+  function updateWaits() {
+    if (!G.live) return;
+    if (current === "pick") {
+      const others = L.players.filter((p) => p.id !== L.myId);
+      const doneOthers = others.filter((p) => L.lockedIds.includes(p.id)).map((p) => p.name);
+      if (G.locked) $("#pickHelp").textContent = waitingText(L.lockedIds) || "Scoring…";
+      else if (doneOthers.length) $("#pickHelp").textContent = `${doneOthers.join(" and ")} locked in. Take your time.`;
+    } else if (current === "reveal" && G.ready) {
+      $("#revNext").textContent = waitingText(L.readyIds) || "Starting…";
+    }
+  }
+
+  /* ----- lobby ----- */
+  function renderLobby() {
+    $("#lobbyCode").textContent = L.code;
+    const list = $("#plist"); list.textContent = "";
+    L.players.forEach((p, i) => {
+      const li = document.createElement("li");
+      const av = document.createElement("span"); av.className = "av"; av.style.background = avatarColor(p.id);
+      const nm = document.createElement("span"); nm.textContent = p.name + (p.id === L.myId ? " (you)" : "");
+      li.append(av, nm);
+      if (i === 0) { const tag = document.createElement("span"); tag.className = "tag"; tag.textContent = "host"; li.append(tag); }
+      list.append(li);
+    });
+    if (L.players.length < 2) {
+      const li = document.createElement("li"); li.className = "empty"; li.textContent = "Waiting for your friend to join…"; list.append(li);
+    }
+    paintSeg("live", L.seconds);
+    $("#lobbyTimer").hidden = !L.isHost;
+    $("#lobbyTimerText").hidden = L.isHost;
+    $("#lobbyTimerText").textContent = `${L.seconds} second${L.seconds > 1 ? "s" : ""} per colour. The host can change this.`;
+    $("#startGame").hidden = !L.isHost;
+    $("#startGame").disabled = L.players.length < 2;
+    $("#lobbyHint").textContent = L.isHost
+      ? "Send this code to your friend. They open Hue Recall, tap Play live, and join with it."
+      : `You're in. Waiting for ${L.players[0] ? L.players[0].name : "the host"} to start.`;
+  }
+  document.querySelector('[data-seg="live"]').addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b || !L.isHost) return;
+    L.seconds = +b.dataset.t; store.set("liveSeconds", L.seconds); sendLobby();
+  });
+  $("#startGame").addEventListener("click", hostStart);
+  $("#copyCode").addEventListener("click", async () => {
+    const text = `Play Hue Recall with me. Room code: ${L.code}`;
+    try { await navigator.clipboard.writeText(text); toast("Copied"); }
+    catch {
+      const r = document.createRange(); r.selectNodeContents($("#lobbyCode"));
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      toast("Code selected. Press Ctrl+C to copy.");
+    }
+  });
+
+  /* ----- final standings ----- */
+  function showFinal(rawRows) {
+    const rows = rawRows.map((r) => ({ id: String(r.id), name: cleanName(r.name), scores: Array.from({ length: ROUNDS }, (_, i) => Number((r.scores || [])[i]) || 0) }));
+    const totals = rows.map((r) => sum(r.scores));
+    const best = Math.max(...totals, 0);
+    const winners = rows.filter((_, i) => totals[i] === best);
+    const crown = $("#crown"); crown.textContent = "";
+    const em = (t) => Object.assign(document.createElement("em"), { textContent: t });
+    if (winners.length > 1) crown.append("Dead heat at ", em(fmt(best)));
+    else if (winners[0] && winners[0].id === L.myId) crown.append(em("You win"), " with " + fmt(best));
+    else if (winners[0]) crown.append(em(winners[0].name), " wins");
+
+    const tbl = $("#board"); tbl.textContent = "";
+    const head = tbl.createTHead().insertRow();
+    const th0 = document.createElement("th"); th0.textContent = "Colour"; head.append(th0);
+    rows.forEach((r) => { const th = document.createElement("th"); th.textContent = r.id === L.myId ? "You" : r.name; th.title = r.name; head.append(th); });
+    const body = tbl.createTBody();
+    G.colors.forEach((c, i) => {
+      const tr = body.insertRow();
+      const td = tr.insertCell();
+      const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = css(c);
+      td.append(sw, String(i + 1));
+      const rowBest = Math.max(...rows.map((r) => r.scores[i]));
+      rows.forEach((r) => { const cell = tr.insertCell(); cell.textContent = fmt(r.scores[i]); if (rows.length > 1 && r.scores[i] === rowBest) cell.className = "best"; });
+    });
+    const foot = tbl.createTFoot().insertRow();
+    foot.insertCell().textContent = "Total";
+    rows.forEach((r, i) => { const cell = foot.insertCell(); cell.textContent = fmt(totals[i]); if (totals[i] === best) cell.className = "win"; });
+    renderFinalFoot();
+    show("final");
+    $("#final").scrollTop = 0;
+  }
+  function renderFinalFoot() {
+    $("#rematch").hidden = !L.isHost;
+    $("#rematch").disabled = L.players.length < 2;
+    $("#finalHint").textContent = L.isHost
+      ? (L.players.length < 2 ? "Everyone else left. Start a new room to play again." : "Play again starts five new colours for everyone in the room.")
+      : `Waiting for ${L.players[0] ? L.players[0].name : "the host"} to start another game.`;
+  }
+  $("#rematch").addEventListener("click", hostStart);
+
+  show("home");
+})();
+</script>
+</body>
+</html>
