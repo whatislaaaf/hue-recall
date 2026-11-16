@@ -167,6 +167,20 @@ button:disabled { cursor: default; opacity: .55; }
   line-height: .9; letter-spacing: -.05em; font-variant-numeric: tabular-nums;
 }
 .score small { display: block; font-family: var(--body); font-size: 13px; letter-spacing: 0; font-weight: 600; opacity: .7; margin-top: 6px; }
+#revTop .counter { position: relative; z-index: 1; }
+.revcols { position: absolute; inset: 0; display: flex; }
+.rcol { flex: 1; min-width: 0; padding: 50px 14px 18px; display: flex; flex-direction: column; gap: 6px; color: var(--on, #fff); }
+.rcol + .rcol { box-shadow: inset 1px 0 0 rgba(0,0,0,.12); }
+.rcol:first-child { padding-left: 24px; }
+.rcol:last-child { padding-right: 20px; }
+.rcol .rs { font-family: var(--display); font-weight: 700; line-height: .9; letter-spacing: -.05em; font-variant-numeric: tabular-nums; }
+.n1 .rs, .n2 .rs { font-size: clamp(46px, 14vw, 70px); }
+.n3 .rs { font-size: clamp(34px, 10vw, 46px); }
+.n4 .rs { font-size: clamp(26px, 7.5vw, 34px); }
+.rcol .best { align-self: flex-start; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 4px 8px; border-radius: 999px; background: var(--on, #fff); color: var(--bg-of, #000); }
+.rcol .rmeta { margin-top: auto; min-width: 0; }
+.rcol .rn { font-weight: 700; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rcol .rv { font-size: 12px; font-weight: 600; opacity: .7; margin-top: 2px; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rev-actions { position: absolute; right: 20px; bottom: 20px; left: 20px; display: flex; justify-content: flex-end; }
 #reveal.live .half .meta { margin-top: 0; }
 #reveal.live #revBot { justify-content: flex-start; }
@@ -176,10 +190,12 @@ button:disabled { cursor: default; opacity: .55; }
 }
 .rrow { display: grid; grid-template-columns: 26px 1fr auto auto; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
 .rrow:last-child { border-bottom: 0; }
-.rrow .sw { width: 26px; height: 26px; border-radius: 8px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); }
+.rrow .rk { color: var(--muted); font-size: 12px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
 .rrow .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .rrow .sc { font-weight: 800; font-variant-numeric: tabular-nums; }
-.rrow .tt { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 4.6em; text-align: right; }
+.rrow .tt { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
+.rrow .sc { min-width: 3.4em; text-align: right; }
+.rboard-h { display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 6px 0 2px; }
 .rrow.top .sc { color: var(--win); }
 
 /* ---------- summary / final ---------- */
@@ -322,9 +338,10 @@ button:disabled { cursor: default; opacity: .55; }
   <!-- REVEAL -->
   <section class="screen" id="reveal" hidden>
     <div class="half on" id="revTop">
+      <div class="revcols" id="revCols" hidden></div>
       <span class="counter tnum" id="revCount">1 / 5</span>
       <div class="score" id="revScore">0.00<small>out of 10</small></div>
-      <div class="meta" style="margin-top:auto"><div class="lab">Your guess</div><div class="val" id="revPick"></div></div>
+      <div class="meta" id="revTopMeta" style="margin-top:auto"><div class="lab">Your guess</div><div class="val" id="revPick"></div></div>
     </div>
     <div class="half on" id="revBot">
       <div class="meta"><div class="lab">The real one</div><div class="val" id="revTarget"></div></div>
@@ -622,36 +639,70 @@ button:disabled { cursor: default; opacity: .55; }
     btn.disabled = false;
     $("#reveal").classList.toggle("live", !!rows);
     const board = $("#rboard");
+    const cols = $("#revCols");
+    $("#revScore").hidden = !!rows;
+    $("#revTopMeta").hidden = !!rows;
+    cols.hidden = !rows;
+    if (rows) {
+      // top half: one column per player, painted in the colour they guessed (you first)
+      cols.textContent = "";
+      cols.className = "revcols n" + Math.min(rows.length, 4);
+      const ordered = [...rows].sort((a, b) => (b.id === L.myId) - (a.id === L.myId));
+      const topScore = Math.max(...rows.map((r) => r.score));
+      const soleBest = rows.length > 1 && rows.filter((r) => r.score === topScore).length === 1;
+      const anims = [];
+      ordered.forEach((r) => {
+        const col = document.createElement("div"); col.className = "rcol";
+        setOn(col, r.guess); col.style.setProperty("--bg-of", css(r.guess));
+        const sc = document.createElement("div"); sc.className = "rs"; sc.textContent = "0.00";
+        col.append(sc);
+        if (soleBest && r.score === topScore) { const b = document.createElement("span"); b.className = "best"; b.textContent = "Closest"; col.append(b); }
+        const meta = document.createElement("div"); meta.className = "rmeta";
+        const nm = document.createElement("div"); nm.className = "rn"; nm.textContent = r.id === L.myId ? "You" : r.name;
+        const hv = document.createElement("div"); hv.className = "rv"; hv.textContent = hsbLabel(r.guess);
+        meta.append(nm, hv); col.append(meta); cols.append(col);
+        anims.push([sc, r.score, ""]);
+      });
+      countUp(anims);
+    } else {
+      countUp([[$("#revScore"), score, "<small>out of 10</small>"]]);
+    }
     if (rows) {
       board.hidden = false; board.textContent = "";
-      const sorted = [...rows].sort((a, b) => b.score - a.score);
+      const head = document.createElement("div"); head.className = "rboard-h";
+      head.append(Object.assign(document.createElement("span"), { textContent: "Standings" }), Object.assign(document.createElement("span"), { textContent: "Total" }));
+      board.append(head);
+      // running standings after this round
+      const sorted = [...rows].sort((a, b) => b.total - a.total);
       sorted.forEach((r, idx) => {
         const row = document.createElement("div");
-        row.className = "rrow" + (idx === 0 && sorted.length > 1 ? " top" : "");
-        const sw = document.createElement("div"); sw.className = "sw"; sw.style.background = css(r.guess);
+        row.className = "rrow" + (idx === 0 && sorted.length > 1 && r.total > sorted[1].total ? " top" : "");
+        const rk = document.createElement("div"); rk.className = "rk"; rk.textContent = idx + 1;
         const nm = document.createElement("div"); nm.className = "nm"; nm.textContent = r.name + (r.id === L.myId ? " (you)" : "");
-        const sc = document.createElement("div"); sc.className = "sc"; sc.textContent = fmt(r.score);
-        const tt = document.createElement("div"); tt.className = "tt"; tt.textContent = fmt(r.total) + " total";
-        row.append(sw, nm, sc, tt); board.append(row);
+        const tt = document.createElement("div"); tt.className = "tt"; tt.textContent = "+" + fmt(r.score);
+        const sc = document.createElement("div"); sc.className = "sc"; sc.textContent = fmt(r.total);
+        row.append(rk, nm, tt, sc); board.append(row);
       });
       btn.textContent = last ? "See final results" : "Ready for next";
     } else {
       board.hidden = true;
       btn.textContent = last ? "See score" : "Next colour";
     }
-    show("reveal");
-    countUp($("#revScore"), score);
   }
-  function countUp(el, target) {
-    const set = (v) => (el.innerHTML = `${fmt(v)}<small>out of 10</small>`);
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return set(target);
+  // animates each [element, target, trailingHtml] from 0 up to its score
+  function countUp(items) {
+    const setAll = (k) => items.forEach(([el, target, tail]) => (el.innerHTML = fmt(target * k) + tail));
+    show("reveal");
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return setAll(1);
+    setAll(0);
     const t0 = performance.now(), dur = 650;
     const step = (now) => {
       const k = Math.min(1, (now - t0) / dur);
-      set(target * (1 - (1 - k) ** 3));
+      setAll(1 - (1 - k) ** 3);
       if (k < 1) rafId = requestAnimationFrame(step);
     };
     rafId = requestAnimationFrame(step);
+    setTimeout(() => { if (current === "reveal") setAll(1); }, dur + 60); // background tabs pause animation frames
   }
   $("#revNext").addEventListener("click", () => {
     if (!G.live) {
@@ -781,7 +832,11 @@ button:disabled { cursor: default; opacity: .55; }
   $("#joinForm").addEventListener("submit", (e) => {
     e.preventDefault();
     if (typeof Peer === "undefined") return liveMsg("Live play couldn't load. Check your internet connection and reload the page.", true);
-    const code = $("#joinCode").value.trim().toUpperCase();
+    let code = $("#joinCode").value.trim().toUpperCase();
+    const typedName = $("#myName").value.trim().toUpperCase();
+    // the room code typed into the name box by mistake
+    if (!code && /^[A-Z0-9]{6}$/.test(typedName)) { code = typedName; $("#joinCode").value = code; }
+    if (typedName === code) $("#myName").value = "";
     if (!/^[A-Z0-9]{6}$/.test(code)) return liveMsg("Room codes are 6 letters and numbers, like K7Q2PX.", true);
     leaveLive();
     joinRoom(code, myName());
@@ -841,7 +896,10 @@ button:disabled { cursor: default; opacity: .55; }
       if (L.phase === "game") { conn.send({ t: "nope", msg: "That room is in the middle of a game. Ask your friend to let you in when it ends." }); setTimeout(() => conn.close(), 400); return; }
       if (L.players.length >= MAX_PLAYERS) { conn.send({ t: "nope", msg: `That room is full (${MAX_PLAYERS} players max).` }); setTimeout(() => conn.close(), 400); return; }
       L.conns.set(id, conn);
-      const name = cleanName(msg.name);
+      // keep names unique in the room: "Player", "Player 2", …
+      const base = cleanName(msg.name);
+      let name = base, n = 2;
+      while (L.players.some((p) => p.name.toLowerCase() === name.toLowerCase())) name = `${base.slice(0, 13)} ${n++}`;
       L.players.push({ id, name });
       sendLobby();
       toast(`${name} joined`);
